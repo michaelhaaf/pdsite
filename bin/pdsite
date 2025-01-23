@@ -43,20 +43,21 @@ function print_version() {
 	local ret=0
 	local git_version
 	local file_version
-	git_version=$(cd "$install_path"; git describe --always --tags 2> /dev/null || true)
-	file_version=$(cat VERSION 2> /dev/null || true)
-	if [ -n "$git_version" ]
-	then
+	git_version=$(
+		cd "$install_path"
+		git describe --always --tags 2>/dev/null || true
+	)
+	file_version=$(cat VERSION 2>/dev/null || true)
+	if [ "$git_version" != "" ]; then
 		version="$git_version"
-	elif [ -n "$file_version" ]
-	then
+	elif [ "$file_version" != "" ]; then
 		version="$file_version"
 	else
 		version="<UNKNOWN>"
 		ret=1
 	fi
 	echo "pdsite version: '$version'"
-	return $ret
+	return "$ret"
 }
 
 # Checks whether a binary we depend on is available
@@ -66,11 +67,11 @@ function check_dep() {
 	local cmd_use_case="${2:-}"
 	local cmd_path
 	cmd_path=$(which "$cmd_name")
-	if [ -z "$cmd_path" ]; then
+	if [ "$cmd_path" = "" ]; then
 		ret=1
 		echo "Could not find dependency '$cmd_name', used ${cmd_use_case}." 1>&2
 	fi
-	return $ret
+	return "$ret"
 }
 
 # Checks whether our dependencies are available
@@ -78,15 +79,15 @@ function check_deps() {
 	local ret=0
 
 	# required
-	check_dep pandoc "to convert '*.md' -> '*.html'" \
-		|| ret=$((ret + $?))
+	check_dep pandoc "to convert '*.md' -> '*.html'" ||
+		ret=$((ret + $?))
 
 	# optional
-	check_dep busybox  "for local http hosting" \
-		|| true
+	check_dep busybox "for local http hosting" ||
+		true
 
-	[ $ret -gt 0 ] && exit $ret
-	return $ret
+	[ "$ret" -gt 0 ] && exit "$ret"
+	return "$ret"
 }
 
 function init() {
@@ -100,10 +101,10 @@ function init() {
 
 # Define web-safe URL creation from file/directory names
 function make_slug() {
-	tr -dc '[:graph:][:space:]' \
-		| tr '[:upper:]' '[:lower:]' \
-		| tr -s ' -_'  \
-		| tr ' _' '-'
+	tr -dc '[:graph:][:space:]' |
+		tr '[:upper:]' '[:lower:]' |
+		tr -s ' -_' |
+		tr ' _' '-'
 }
 
 function simplify_path() {
@@ -112,13 +113,13 @@ function simplify_path() {
 
 # Define human-readable page title creation from web-safe filenames
 function make_pretty() {
-	tr '-' ' ' \
-		| awk '{ for (i = 1; i <= NF; i++) { $i = toupper(substr($i, 1, 1)) substr($i, 2) }} 1'
+	tr '-' ' ' |
+		awk '{ for (i = 1; i <= NF; i++) { $i = toupper(substr($i, 1, 1)) substr($i, 2) }} 1'
 }
 
 # Check whether a shell variable is set
 _var_set() {
-	set | grep '^'"$1"'=' > /dev/null
+	set | grep '^'"$1"'=' >/dev/null
 }
 
 # Remove quotes if present
@@ -133,8 +134,7 @@ _remove_quotes() {
 _set_if_unset() {
 	_var_name="$1"
 	shift
-	if ! _var_set "$_var_name"
-	then
+	if ! _var_set "$_var_name"; then
 		eval "$_var_name=$(_remove_quotes "${@}")"
 	fi
 }
@@ -143,13 +143,13 @@ function get_config_var() {
 	local ret=0
 	local var_name="$1"
 	local value
-	value=$(grep '^'"$var_name"':' < "$config_file" | sed 's|^'"$var_name"':\s*\(.*\)$|\1|')
+	value=$(grep '^'"$var_name"':' <"$config_file" | sed 's|^'"$var_name"':\s*\(.*\)$|\1|')
 	[ "$value" ] || {
 		echo "Missing config variable '$var_name' in .pdsite.yml" 1>&2
 		ret=1
 	}
 	echo -n "$value"
-	return $ret
+	return "$ret"
 }
 
 function find_source_files_navi() {
@@ -179,19 +179,16 @@ function navi() {
 	# Match nothing
 	local np_prev=""
 	local np_open=0
-	while read -r np
-	do
+	while read -r np; do
 		# Close finished sub-folders
-		while [[ "$np" != "$np_prev"* ]]
-		do
+		while [[ "$np" != "$np_prev"* ]]; do
 			echo "]},"
 			np_open=$((np_open - 1))
 			np_prev=$(dirname "$np_prev")
 		done
 
 		# Open parent folders without content
-		while [[ "$np" != "$np_prev" ]] || [[ $np_open -eq 0 ]]
-		do
+		while [[ "$np" != "$np_prev" ]] || [[ $np_open -eq 0 ]]; do
 			# Adding one path element
 			# Generate path relative to site root
 			local path
@@ -199,9 +196,8 @@ function navi() {
 
 			# Generate pretty page name automatically
 			local name
-			name=$(grep "^title:" "$path/index.md" 2> /dev/null | head -n 1 | sed -E -e 's|^title:[[:space:]]*||' || echo "")
-			if [ -z "$name" ]
-			then
+			name=$(grep "^title:" "$path/index.md" 2>/dev/null | head -n 1 | sed -E -e 's|^title:[[:space:]]*||' || echo "")
+			if [ "$name" = "" ]; then
 				name=$(echo "$path" | sed 's|.*/\(.*\)|\1|' | make_pretty)
 			else
 				# Removes quotes if present
@@ -210,7 +206,7 @@ function navi() {
 
 			local path_rtf="${path#.}"
 			local path_part=""
-			[ -n "$path_rtf" ] && path_part='"path":"'$link_prefix$path_rtf'",'
+			[ "$path_rtf" != "" ] && path_part='"path":"'$link_prefix$path_rtf'",'
 			echo '{"type":"directory","name":"'"$name"'",'"$path_part"'"contents":['
 			np_open=$((np_open + 1))
 
@@ -219,8 +215,7 @@ function navi() {
 	done < <(find_source_files_navi | tr '\n' '\0' | xargs -0 dirname | sort | uniq)
 
 	# Close remaining folders
-	while [ $np_open -gt 0 ]
-	do
+	while [ "$np_open" -gt 0 ]; do
 		echo "]}"
 		np_open=$((np_open - 1))
 	done
@@ -231,54 +226,53 @@ function navi() {
 function build() {
 	local build_local=false
 
-	while [ -n "${1:-}" ]
-	do
+	while [ "${1:-}" != "" ]; do
 		swt=$1
 		shift
 		case $swt in
-			-h|--help)
-				print_help
-				exit 0
-				;;
-			-v|--version)
-				print_version
-				exit 0
-				;;
-			-l|--local)
-				build_local=true
-				;;
-			-t|--theme)
-				theme="$1"
-				shift
-				;;
-			-i|--input-ext)
-				input_extension="$1"
-				shift
-				;;
-			-o|--output-folder)
-				output_folder="$1"
-				shift
-				;;
-			-u|--site-url)
-				site_url="$1"
-				shift
-				;;
-			-p|--site-base-path)
-				site_base_path="$1"
-				shift
-				;;
-			*)
-				echo "Unknown switch '$swt'" 1>&2
-				print_help
-				exit 1
-				;;
+		-h | --help)
+			print_help
+			exit 0
+			;;
+		-v | --version)
+			print_version
+			exit 0
+			;;
+		-l | --local)
+			build_local=true
+			;;
+		-t | --theme)
+			theme="$1"
+			shift
+			;;
+		-i | --input-ext)
+			input_extension="$1"
+			shift
+			;;
+		-o | --output-folder)
+			output_folder="$1"
+			shift
+			;;
+		-u | --site-url)
+			site_url="$1"
+			shift
+			;;
+		-p | --site-base-path)
+			site_base_path="$1"
+			shift
+			;;
+		*)
+			echo "Unknown switch '$swt'" 1>&2
+			print_help
+			exit 1
+			;;
 		esac
 	done
 
 	echo "Build property: local='$build_local'"
 
 	# Load config variables from file
-	config_file=$(pwd)'/.pdsite.yml'
+	config_file=$PWD'/.pdsite.yml'
 	if [ -f "$config_file" ]; then
 		theme="${theme:-"$(get_config_var 'theme')"}"
 		_set_if_unset input_extension "$(get_config_var 'inputextension')"
@@ -294,8 +288,7 @@ function build() {
 	output_folder="${output_folder:-"build"}"
 	_set_if_unset site_url ""
 	_set_if_unset site_base_path ""
-	if $build_local
-	then
+	if "$build_local"; then
 		# NOTE This makes the site not (fully) position independent.
 		#      The alternative would be, to use relative paths to the root.
 		link_prefix="$output_folder"
@@ -314,7 +307,10 @@ function build() {
 	echo " done."
 
 	theme_path="$themes_path/$theme"
-	output_folder=$(cd "$output_folder"; pwd)
+	output_folder=$(
+		cd "$output_folder"
+		pwd
+	)
 
 	# Build glob expressions
 	extension_glob='*'$input_extension
@@ -338,50 +334,45 @@ function build() {
 		echo "site-url: $site_url"
 		echo "site-base-path: $site_base_path"
 		echo -e "...\n"
-	} > "$config_block"
+	} >"$config_block"
 
-	echo -e "\n---\npagenameintitle: y\npagename: _\n...\n" > "$local_block_template"
+	echo -e "\n---\npagenameintitle: y\npagename: _\n...\n" >"$local_block_template"
 
 	# By default, match nothing
 	out_exclude="XXX_XXX_XXX"
 	# If the output folder is contained within the source folder, exclude it
-	[[ "$output_folder" == $(pwd)* ]] && out_exclude='.'${output_folder#"$(pwd)"}
+	[[ "$output_folder" == $PWD* ]] && out_exclude='.'${output_folder#"$(pwd)"}
 
 	export simplify_path
 
 	echo "Generate base file structure ..."
-	find_source_dirs \
-		| make_slug \
-		| while read -r in_path
-	do
-		mkdir -p "$output_folder/$(simplify_path "$in_path")"
-	done
-	find_non_index_source_files \
-		| sed 's|\(.*\)\..*|\1|' \
-		| make_slug \
-		| while read -r in_path
-	do
-		mkdir -p "$output_folder/$(simplify_path "$in_path")"
-	done
+	find_source_dirs |
+		make_slug |
+		while read -r in_path; do
+			mkdir -p "$output_folder/$(simplify_path "$in_path")"
+		done
+	find_non_index_source_files |
+		sed 's|\(.*\)\..*|\1|' |
+		make_slug |
+		while read -r in_path; do
+			mkdir -p "$output_folder/$(simplify_path "$in_path")"
+		done
 
 	echo "Copy in index files ..."
-	find_index_source_files \
-		| while read -r in_path
-	do
-		out_path=$(simplify_path "$(echo "$in_path" | make_slug)")
-		cp "$in_path" "$output_folder/$out_path"
-	done
+	find_index_source_files |
+		while read -r in_path; do
+			out_path=$(simplify_path "$(echo "$in_path" | make_slug)")
+			cp "$in_path" "$output_folder/$out_path"
+		done
 
 	echo "Copy in other content files ..."
-	find_non_index_source_files | while read -r in_path
-	do
+	find_non_index_source_files | while read -r in_path; do
 		out_path=$(simplify_path "$(echo "$in_path" | sed 's|\./\(.*\)\.\(.*\)|\1/index.\2|' | make_slug)")
 		cp "$in_path" "$output_folder/$out_path"
 	done
 
 	echo "Copy in other (non-written-content) files ..."
-	find . -not -path "*/\.*" -not -path "${out_exclude}*" -not -path "*$extension_glob" -type f | while read -r file_path
-	do
+	find . -not -path "*/\.*" -not -path "${out_exclude}*" -not -path "*$extension_glob" -type f | while read -r file_path; do
 		new_dir=$(dirname "$file_path")
 		new_dir=$(simplify_path "$new_dir")
 		new_file=$(basename "$file_path")
@@ -392,7 +383,7 @@ function build() {
 	cd "$output_folder"
 
 	echo "Generating the navigation menu JSON file ..."
-	navi > "$global_tree"
+	navi >"$global_tree"
 
 	echo "Generate local YAML ..."
 	find . -not -path "${out_exclude}*" -path "$index_file_glob" -type f | while read -r line; do
@@ -401,10 +392,10 @@ function build() {
 
 		# Create local YAML block with auto-generated page name
 		name=$(echo "${relpath##*/}" | make_pretty)
-		sed 's|^pagename: _$|pagename: '"$name"'|' "$local_block_template" > "$relpath/$local_block"
+		sed 's|^pagename: _$|pagename: '"$name"'|' "$local_block_template" >"$relpath/$local_block"
 
 		# Create local YAML block with context-aware file tree data
-		sed 's|"path":"'"$site_path_abs"'",|\0"active":y,|' "$global_tree" > "$relpath/$local_tree"
+		sed 's|"path":"'"$site_path_abs"'",|\0"active":y,|' "$global_tree" >"$relpath/$local_tree"
 	done
 
 	# This meta-data file is used for each markdown file to be converted,
@@ -419,43 +410,45 @@ function build() {
 		echo "panflute-filters: [add_local_link_prefix, replace_link_suffixes]"
 		# Uncomment this next line for debugging
 		# echo "panflute-verbose: true"
-	} > "$common_meta_file"
+	} >"$common_meta_file"
 
 	echo "Convert content files to context-aware HTML ..."
-	find . -not -path "${output_folder}*" -path "$index_file_glob" -type f \
-		| while read -r index_md
-	do
-		dir_before="$(pwd)"
-		cd "$(dirname "$index_md")"
-		site_base_path_rel="$index_md"
-		site_base_path_rel="${site_base_path_rel#./}"
-		site_base_path_rel="${site_base_path_rel%/index.md}"
-		site_base_path_rel="$(echo "$site_base_path_rel" | sed -e 's|[^/]\+|..|g')"
-		index_md_local="$(basename "$index_md")"
-		pandoc \
-			-V site_base_path="$site_base_path_rel" \
-			--template "$theme_path/template.html" \
-			--toc \
-			-o index.html \
-			-M allp_prefix="../" \
-			-M allp_file="$index_md_local" \
-			-M rls_relative_only=True \
-			-M rls_ext_from=".md" \
-			-M rls_ext_to=".html" \
-			--metadata-file="$common_meta_file" \
-			-F panflute \
-			"$index_md_local" "$local_tree" "$local_block" "$config_block"
-		cd "$dir_before"
-		rm "$index_md"
-	done
+	find . -not -path "${output_folder}*" -path "$index_file_glob" -type f |
+		while read -r index_md; do
+			dir_before="$PWD"
+			cd "$(dirname "$index_md")"
+			site_base_path_rel="$index_md"
+			site_base_path_rel="${site_base_path_rel#./}"
+			site_base_path_rel="${site_base_path_rel%/index.md}"
+			site_base_path_rel="$(echo "$site_base_path_rel" | sed -e 's|[^/]\+|..|g')"
+			index_md_local="$(basename "$index_md")"
+			pandoc \
+				-V site_base_path="$site_base_path_rel" \
+				--template "$theme_path/template.html" \
+				--toc \
+				-o index.html \
+				-M allp_prefix="../" \
+				-M allp_file="$index_md_local" \
+				-M rls_relative_only=True \
+				-M rls_ext_from=".md" \
+				-M rls_ext_to=".html" \
+				--metadata-file="$common_meta_file" \
+				-F panflute \
+				"$index_md_local" "$local_tree" "$local_block" "$config_block"
+			cd "$dir_before"
+			rm "$index_md"
+		done
 
 	echo "Check if site has a usable structure ..."
 	start_path="index.html"
 	if [ ! -e "$output_folder/$start_path" ]; then
 		echo "WARNING: There is no index.html in the web-site root folder." 1>&2
 		# Choose an arbitrary *.html file from our output as start path
-		start_path=$(cd "$output_folder"; find . -regex "\./.+\.html" | sort | head -n 1 | sed -e 's|^\./||')
-		if [ -z "$start_path" ]; then
+		start_path=$(
+			cd "$output_folder"
+			find . -regex "\./.+\.html" | sort | head -n 1 | sed -e 's|^\./||'
+		)
+		if [ "$start_path" = "" ]; then
 			echo "ERROR: There is no *.html in the generated web-site." 1>&2
 			exit 1
 		fi
@@ -463,17 +456,15 @@ function build() {
 	start_path_http="${start_path%index.html}"
 
 	echo "Clean up ..."
-	find . -path "*.tmp" -type f -delete
+	# find . -path "*.tmp" -type f -delete
 
 	echo "Copy in theme assets ..."
 	cd "$theme_path"
-	find . -not -path "." -type d | while read -r dir_path
-	do
+	find . -not -path "." -type d | while read -r dir_path; do
 		new_dir=$(simplify_path "$dir_path")
 		mkdir -p "$output_folder/$new_dir"
 	done
-	find . -not -path "./template.html" -type f | while read -r file_path
-	do
+	find . -not -path "./template.html" -type f | while read -r file_path; do
 		new_dir=$(dirname "$file_path")
 		new_dir=$(simplify_path "$new_dir")
 		new_file=$(basename "$file_path")
@@ -485,8 +476,7 @@ function build() {
 
 function serve() {
 	build --local "${@}"
-	if check_dep busybox 2> /dev/null
-	then
+	if check_dep busybox 2>/dev/null; then
 		echo "Hosting with busybox on 'http://127.0.0.1:8080/${start_path_http}' (stop with Ctrl-C) ..."
 		busybox httpd -f -p 127.0.0.1:8080 -h "$output_folder"
 	else
@@ -500,26 +490,26 @@ check_deps
 cmd=${1:-}
 shift
 case $cmd in
-	-h|--help|help)
-		print_help
-		exit 0
-		;;
-	-v|--version|version)
-		print_version
-		exit 0
-		;;
-	init)
-		init "${@}"
-		;;
-	build)
-		build "${@}"
-		;;
-	serve)
-		serve "${@}"
-		;;
-	*)
-		echo "Unknown command '$cmd'" 1>&2
-		print_help
-		exit 1
-		;;
+-h | --help | help)
+	print_help
+	exit 0
+	;;
+-v | --version | version)
+	print_version
+	exit 0
+	;;
+init)
+	init "${@}"
+	;;
+build)
+	build "${@}"
+	;;
+serve)
+	serve "${@}"
+	;;
+*)
+	echo "Unknown command '$cmd'" 1>&2
+	print_help
+	exit 1
+	;;
 esac
